@@ -1,0 +1,207 @@
+hubub
+=====
+Release 0.1
+Mark Anacker	December, 2000
+http://hubub.sf.net/
+
+Why is this included in BrickBot’s GitHub organization?
+-------------------------------------------------------
+
+As the RCX toolspace grew, several utilities adopted TCP/IP communication
+mechanisms.  While ir-server was provided with BrickEMU and later
+incorporated into brickOS-bibo, the hubub project is included as a
+potential alternative solution.
+
+
+What is it?
+-----------
+
+Hubub is a TCP-based hub designed to efficiently distribute data between
+multiple clients.  In essence, this is a transparent peer-to-peer data 
+transfer system.  When bytes are received from a connected client, they 
+are quickly transmitted to all of the *other* connected clients.  The 
+data is *never* echoed back to it's source.  The hub makes no assumptions 
+about the format of the data streams - only that they are carried over 
+TCP/IP.
+
+Version 1 (hubub1) *doesn't* enforce message boundaries between clients.
+This means that if multiple clients are talking at once, their data will
+be intermingled.  This may be fine if you're mixing .WAVs, but it's
+probably not what you really want.  Think of it as a virtual Ethernet -
+with the collision detection left up to the clients :-)  It does work
+very well as a broadcaster from 1 source to multiple listeners, or
+bi-directionally between 2 clients.
+
+The next version, hubub2, will be somewhat more complex.  It *will* offer
+per-client buffering, as well as proper message separation.  Unfortunately,
+adding a record-blocking system to a stream protocol like TCP means
+than the client and server must both implement that system.  So much for
+client independence...
+
+The server is written in highly portable 'c', and has been built on Linux
+and Win32.  Clients may be written in any language that supports TCP 
+sockets, although the hub makes no attempt to reconcile incompatible 
+clients.  For that matter, little details like buffering are pretty much
+left up to the clients also.  The hub does try to protect itself by
+limiting the number of simultaneous clients, and dropping those that
+develop errors.
+
+Why?
+----
+
+I needed a means to implement some distributed monitoring tools -
+syslog-parsers, power monitors, etc.  I also wanted to distribute the 
+NMEA output from my GPS to several applications at once, with minimal 
+impact on my CPU.  Finally, I wanted to be able to put together 
+distributed systems with no real programming - just small blocks held 
+together with Perl or shell scripts or whatever.  Think of your favorite
+small snap-together building blocks - I'm making the networking equivalent.
+
+I'm not out to displace more complex systems like Jabber or IRC, just to
+make managing my home network a bit easier and more fun.
+
+I've written similar servers in scripting languages such as Perl and TCL, 
+but they all suffered drawbacks like poor performance, resource leaks, 
+and just plain overhead of having the interpreter always loaded.  Likewise,
+until lately, Java just hasn't been suitable for low-impact persistent
+servers (it's still takes too big a bite out of the system for me).
+
+The primary design goals for this package were:
+
+*) simple, self-contained code
+*) low memory and resource footprint
+*) minimal cpu overhead
+*) maximum reliability and performance
+
+I believe I've met these goals with this release.  The 'c' programs in this
+package are each contained in a single .c file for simplicity.  This isn't
+my usual coding style, but I wanted to keep things as straightforward as
+possible.  So all of the includes, defines, and globals are up at the top
+of the .c file instead of separate .h files.
+
+I used the excellent little CodeCrusader IDE to build this project
+(see http://www.newplanetsoftware.com/jcc/).  So I'm including the 
+.jcc project files along with it's other assorted meta files.  You should
+be able to compile the sources with just the included Makefile.  I've also
+included the MSVC++ 6.0 project files, for those of you trying to do
+something useful on Windows.  I've built the programs on Win2K, and done
+some minimal testing.
+
+For your convenience, I've included some sample clients written in TCL.
+
+What do I get?
+--------------
+
+You get 2 programs written in 'c', and a number of example clients in TCL.
+
+hubub1
+hubub1.exe
+	This is the server - the heart of the system.  It runs as a process
+under Unix or Windows, not a daemon.  This is for simplicity - there are
+common techniques to turn it into a daemon or service if need be.
+
+[] ./hubub1 -h
+./hubub1: options:
+       -h          this help message
+       -v          verbose mode
+       -b <bytes>  buffer size in bytes (default=4096)
+       -c <count>  max. number of client connections (default=16)
+       -p <port>   port to listen on (*REQUIRED*)
+       -r <bytes>  socket recv buffer in bytes (default=32768)
+       -t <bytes>  socket transmit buffer in bytes (default=32768)
+
+
+piper1
+piper1.exe
+	This is a low-impact client that basically connects stdin/stdout to
+the hub.  It can talk to a terminal window in either cooked or raw mode, and
+is perfectly happy being on either side of a pipe.  It runs with very little
+impact on the CPU when it's not actively shuffling data (and darn little
+CPU use when it *is* working).  It's a companion to hubub1, since it doesn't
+implement any application-level protocol.  It just shoves the bytes in or out
+of the connection as quickly as possible.
+
+[] ./piper1 -h
+./piper1: options:
+       -h          this help message
+       -l          buffered line input mode
+       -v          verbose mode
+       -b <bytes>  buffer size in bytes (default=4096)
+       -s <addr>   server to connect to (*REQUIRED*)
+       -p <port>   port to connect to (*REQUIRED*)
+       -r <bytes>  socket recv buffer in bytes (default=32768)
+       -t <bytes>  socket transmit buffer in bytes (default=32768)
+
+A note on the command-line options
+
+	You'll note that there are 3 buffer size parameters available on
+the command line.  The "-b" value sets the size of the internal data buffer.
+This is in effect, the largest chunk of data that the program will read (or
+write) from the socket at one time.   The default should be adequate,
+although you want want to experiment with it a bit.
+
+	The "-r" and "-t" values set the send and recv buffer sizes in the
+TCP sockets.  This value more or less influences the window size that TCP
+advertises to the client.  If you have slow reader clients, you might want
+to increase the transmit buffer on the hub, and the recv buffers on the
+client side (assuming you're using piper1).  It's here for you to play around
+with.  
+
+A couple of good references on network tuning are:
+
+http://www.ncsa.uiuc.edu/People/vwelch/net_perf/tcp_windows.html
+http://www.psc.edu/networking/perf_tune.html
+
+
+TCL samples
+
+	There are a number of little clients included in the tcl/ directory.
+I added these because I use them (tcl is perfectly good for transient programs
+like this), and they illustrate how to connect to the hub with something other
+than 'c'.  The '.tcl' programs send and receive data as lines delimited by
+newlines (basically, text).  This is very convenient for TCL, since it
+really works best with textual data.  The hub, of course, doesn't care.  For
+that matter, neither does the piper1 application.  Here are a couple of them:
+
+hublink.tcl
+	Links two hubs together by passing lines from one to the other.
+
+hubfeed.tcl
+	Connects a hub to stdin/stdout and feeds lines from one to the
+	other.  The input side is set by a direction parameter on the
+	command line.  For instance, to feed syslog messages into a hub:
+
+	tail -1f /var/log/messages|hubfeed i myhub.com 2020
+
+	And thus to monitor the output somewhere else:
+
+	hubfeed o myhub.com 2020
+
+
+Installation?
+-------------
+
+	Using either the included Makefiles, or the CodeCrusader projects,
+build the sources.  Copy to the directory of your choice (all configuration
+is done via the command line), and start a server thusly:
+
+	hubub1 -p 2020
+
+This will start the server on port 2020 (choose a port that suits your needs,
+and doesn't interfere with any oter services).  Now clients (piper1 or any
+of the tcl scripts) can connect to that server on that port.  It's really
+very simple.  You can have as many hubs running on different ports as you
+need (and your system can support).
+
+License?
+--------
+
+	These programs are released under the terms of the Artistic License
+(see the file LICENSE).  This allows you to use it for any purpose you see
+fit, commercial or not, as long as you don't try to claim it as your own
+(or try to prevent anyone else from using it).
+
+Improvements, fixes, or just plain feedback is encouraged.
+ 
+I hope you find it useful.
+
